@@ -14,12 +14,14 @@ class ModelResponse:
         }
     
 @dataclass
-class ExtensionNotAllowed:
+class BadRequest:
+    error: str
     code: int = 400
-    message: str = "Error! File not supported"
+    message: str = "Error!"
 
     def to_dict(self):
         return {
             "code":self.code,
-            "message": self.message
+            "message": self.message,
+            "error":self.error
         }

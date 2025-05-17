@@ -9,6 +9,7 @@ import tempfile
 app = Flask(__name__)
 app.config['ALLOWED_EXTENSIONS'] = {'edf', 'csv', 'txt'}
 CORS(app)
+models = ["CNN", "LSTM"]
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
@@ -20,16 +21,17 @@ def home():
 @app.route("/detect", methods=['POST'])
 def detect():
     file = request.files["file"]
-    model_type = request.form.get("model") or "CNN"
+    model_type = request.form.get("model") or models[0]
     if file and allowed_file(file.filename):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".edf") as temp_file:
             file.save(temp_file.name)
             temp_filename = temp_file.name
 
         try:
-            fft = model_type.upper() == "LSTM"
-            model_path = f"model/{model_type}.h5"
-            print(model_path, fft)
+            fft = model_type.upper() == models[1]
+            model_path = f"model/{model_type.upper()}.h5"
+            if model_path not in models:
+                return jsonify(response.BadRequest(error="Model Does Not Exists"))
 
             processed_data = model.preprocess(temp_filename, fft) 
             prediction = model.predict(processed_data, model_path)
@@ -38,7 +40,7 @@ def detect():
         finally:
             os.remove(temp_filename)
     else:
-        return jsonify(response.ExtensionNotAllowed().to_dict())
+        return jsonify(response.BadRequest(error="File Not Supported").to_dict())
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8081)
