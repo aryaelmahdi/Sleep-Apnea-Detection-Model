@@ -21,7 +21,8 @@ def home():
 @app.route("/detect", methods=['POST'])
 def detect():
     file = request.files["file"]
-    model_type = request.form.get("model") or models[0]
+    model_type = request.form.get("model")
+    model_type = model_type.upper() if model_type else models[0]
     if file and allowed_file(file.filename):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".edf") as temp_file:
             file.save(temp_file.name)
