@@ -2,9 +2,25 @@
 import mne
 import numpy as np
 import tensorflow as tf
+from scipy.fft import fft
 
 channel_names = ["TERMISTORE", "TORACE", "ADDOME", "SpO2"]
 class_labels = ["apnea", "normal"]
+
+def toFFT(samples):
+    fft_data = []
+
+    for sample in samples:
+        sample_fft = fft(sample, axis=0)
+        sample_fft = sample_fft.real.astype(np.float32)
+        fft_data.append(sample_fft)
+
+    fft_data = np.array(fft_data)
+    fft_data = np.expand_dims(fft_data, axis=-1)
+
+    print("toFFT done, new shape:", fft_data.shape)
+
+    return fft_data
 
 def trim_signal(signal, start_time, end_time):
     raw = mne.io.read_raw_edf(signal, preload=True)
@@ -39,15 +55,13 @@ def combine_signal(stacked_signal, fs):
         return None
 
     ch_names = list(stacked_signal.keys())
-    # you should change the frequency to the one that comes with the signals
-    # info = mne.create_info(ch_names=ch_names, sfreq=fs, ch_types="misc")
-    info = mne.create_info(ch_names=ch_names, sfreq=100, ch_types="misc")
+    info = mne.create_info(ch_names=ch_names, sfreq=fs, ch_types="misc")
     combined_raw = mne.io.RawArray(combined_signal, info)
     data = combined_raw.get_data()
 
     return data
 
-def preprocess_cnn_with_trim(raw_signal, start_time=1000, end_time=1005):
+def preprocess_with_trim(raw_signal, fft, start_time=1000, end_time=1005):
     stacked_signal, fs = trim_signal(raw_signal, start_time, end_time)
     signal_data = combine_signal(stacked_signal, fs)
 
@@ -57,16 +71,19 @@ def preprocess_cnn_with_trim(raw_signal, start_time=1000, end_time=1005):
     max_val = np.max(signal_data, axis=1, keepdims=True)
     signal_data = (signal_data - min_val) / (max_val - min_val + 1e-8)
 
-    signal_data = signal_data.T  # Shape: (channels, timepoints)
+    signal_data = signal_data.T
     signal_data = np.expand_dims(signal_data, axis=0)
-    # signal_data.flatten()
+    if fft:
+        signal_data = toFFT(signal_data)
+
+    signal_data = reshape_signals(signal_data)
 
     return signal_data
 
 def reshape_signals(X):
     return X.reshape((X.shape[0], X.shape[1], X.shape[2]))
 
-def preprocess_cnn(file):
+def preprocess(file, fft):
     signal_data = mne.io.read_raw_edf(file, preload=True)
     signal_data = signal_data.get_data()
 
@@ -76,17 +93,24 @@ def preprocess_cnn(file):
     max_val = np.max(signal_data, axis=1, keepdims=True)
     signal_data = (signal_data - min_val) / (max_val - min_val + 1e-8)
 
-    signal_data = signal_data.T  # Shape: (channels, timepoints)
+    signal_data = signal_data.T
     signal_data = np.expand_dims(signal_data, axis=0)
-    # signal_data = reshape_signals(signal_data)
-    # signal_data.flatten()
+
+    signal_data = np.array(signal_data, dtype=np.float32)
+    signal_data = reshape_signals(signal_data)
+    if fft:
+        signal_data = toFFT(signal_data)
+
 
     return signal_data
 
-def predict_cnn(processed_signal, model_path):
+def predict(processed_signal, model_path):
     model = tf.keras.models.load_model(model_path)
     prediction = model.predict(processed_signal)
-    predicted_class = np.argmax(prediction)
+    if prediction.shape[-1] == 1:
+        predicted_class = int(prediction[0][0] >= 0.5)
+    else:
+        predicted_class = np.argmax(prediction)
     print(f"Predicted Class: {class_labels[predicted_class]}\n")
 
     return class_labels[predicted_class]
