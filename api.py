@@ -30,7 +30,7 @@ def detect():
         try:
             fft = model_type.upper() == models[1]
             model_path = f"model/{model_type.upper()}.h5"
-            if model_path not in models:
+            if model_type not in models:
                 return jsonify(response.BadRequest(error="Model Does Not Exists"))
 
             processed_data = model.preprocess(temp_filename, fft) 
