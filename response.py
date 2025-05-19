@@ -4,7 +4,7 @@ from dataclasses import dataclass
 class ModelResponse:
     code: int
     message: str
-    result: str
+    result: any
     
     def to_dict(self):
         return {

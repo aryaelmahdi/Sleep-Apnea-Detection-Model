@@ -47,7 +47,7 @@ def trim_signal(signal, start_time, end_time):
 
     return trimmed_signals, fs
 
-def combine_signal(stacked_signal, fs):
+def combine_signal(stacked_signal, fs, start_time, end_time):
     combined_signal = np.vstack([stacked_signal[ch] for ch in stacked_signal if stacked_signal[ch] is not None])
 
     if combined_signal.shape[0] == 0:
@@ -57,28 +57,35 @@ def combine_signal(stacked_signal, fs):
     ch_names = list(stacked_signal.keys())
     info = mne.create_info(ch_names=ch_names, sfreq=fs, ch_types="misc")
     combined_raw = mne.io.RawArray(combined_signal, info)
-    data = combined_raw.get_data()
+    combined_file = f"raw_{start_time}-{end_time}.edf"
+    mne.export.export_raw(combined_file, combined_raw, fmt="edf", overwrite=True)
 
-    return data
+    return combined_file
 
 def preprocess_with_trim(raw_signal, fft, start_time=1000, end_time=1005):
     stacked_signal, fs = trim_signal(raw_signal, start_time, end_time)
-    signal_data = combine_signal(stacked_signal, fs)
+    signal_data = combine_signal(stacked_signal, fs, start_time, end_time)
 
-    signal_data = np.nan_to_num(signal_data, nan=0.0, posinf=1.0, neginf=-1.0)
+    processed_signal = signal_data
+    processed_signal = mne.io.read_raw_edf(processed_signal, preload=True)
+    processed_signal = processed_signal.get_data()
 
-    min_val = np.min(signal_data, axis=1, keepdims=True)
-    max_val = np.max(signal_data, axis=1, keepdims=True)
-    signal_data = (signal_data - min_val) / (max_val - min_val + 1e-8)
+    processed_signal = np.nan_to_num(processed_signal, nan=0.0, posinf=1.0, neginf=-1.0)
 
-    signal_data = signal_data.T
-    signal_data = np.expand_dims(signal_data, axis=0)
+    min_val = np.min(processed_signal, axis=1, keepdims=True)
+    max_val = np.max(processed_signal, axis=1, keepdims=True)
+    processed_signal = (processed_signal - min_val) / (max_val - min_val + 1e-8)
+
+    processed_signal = processed_signal.T
+    processed_signal = np.expand_dims(processed_signal, axis=0)
+
+    processed_signal = np.array(processed_signal, dtype=np.float32)
     if fft:
-        signal_data = toFFT(signal_data)
+        processed_signal = toFFT(processed_signal)
 
-    signal_data = reshape_signals(signal_data)
+    processed_signal = reshape_signals(processed_signal)
 
-    return signal_data
+    return processed_signal, signal_data
 
 def reshape_signals(X):
     return X.reshape((X.shape[0], X.shape[1], X.shape[2]))
